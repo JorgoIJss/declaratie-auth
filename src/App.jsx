@@ -609,6 +609,12 @@ export default function DeclaratiesWebApp() {
   const [authError, setAuthError] = useState("");
   const [profileName, setProfileName] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    if (!isAdmin && (tab === "admin-users" || tab === "signup-attempts")) {
+      setTab("declaraties");
+    }
+  }, [isAdmin, tab]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [draft, setDraft] = useState(blankDraft());
   const [editingId, setEditingId] = useState(null);
@@ -631,7 +637,6 @@ export default function DeclaratiesWebApp() {
 
   const settingsLoadedRef = useRef(false);
   const settingsAutoSaveTimeoutRef = useRef(null);
-  const adminOnlyTabs = ["taps", "admin-users", "signup-attempts"];
 
   const total = useMemo(
     () =>
@@ -768,12 +773,6 @@ export default function DeclaratiesWebApp() {
       if (settingsAutoSaveTimeoutRef.current) clearTimeout(settingsAutoSaveTimeoutRef.current);
     };
   }, [settings, isBootLoading, currentUser?.id]);
-
-  useEffect(() => {
-    if (!isAdmin && adminOnlyTabs.includes(tab)) {
-      setTab("declaraties");
-    }
-  }, [isAdmin, tab]);
 
   async function handleAuthSubmit({ mode, email, password, displayName, secretAnswer }) {
     setIsAuthSubmitting(true);
@@ -2136,7 +2135,7 @@ function Field({ label, children }) {
 
 // ================= ADMIN COMPONENTS =================
 
-function AdminUsersTab({ supabase }) {
+function LegacyAdminUsersTab({ supabase }) {
   const [users,setUsers]=React.useState([]);
 
   async function loadUsers(){
@@ -2189,7 +2188,7 @@ function AdminUsersTab({ supabase }) {
   )
 }
 
-function SignupAttemptsTab({ supabase }){
+function LegacySignupAttemptsTab({ supabase }){
   const [items,setItems]=React.useState([]);
 
   async function load(){

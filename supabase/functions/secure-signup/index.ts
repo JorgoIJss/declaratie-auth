@@ -32,6 +32,36 @@ function genericResponse() {
   );
 }
 
+type SignupAttemptPayload = {
+  email: string;
+  display_name: string;
+  normalized_secret_answer: string;
+  secret_ok: boolean;
+  attempt_count: number;
+  blocked_until: string | null;
+  ip: string | null;
+  user_agent: string | null;
+};
+
+async function logSignupAttempt(payload: SignupAttemptPayload) {
+  const { error } = await admin.from("signup_attempts").insert(payload);
+
+  if (error) {
+    console.log("secure-signup signup_attempts insert failed", {
+      email: payload.email,
+      secretOk: payload.secret_ok,
+      attemptCount: payload.attempt_count,
+      blockedUntil: payload.blocked_until,
+      error: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code,
+      at: new Date().toISOString(),
+    });
+    throw new Error(`signup_attempts insert failed: ${error.message}`);
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { status: 200, headers: corsHeaders });
@@ -47,10 +77,7 @@ serve(async (req) => {
     const email = String(body.email || "").trim().toLowerCase();
     const password = String(body.password || "");
     const secretAnswer = String(body.secretAnswer || "");
-    const ip =
-      req.headers.get("x-forwarded-for") ||
-      req.headers.get("x-real-ip") ||
-      null;
+    const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || null;
     const userAgent = req.headers.get("user-agent") || null;
 
     if (!displayName || !email || !password) {
@@ -60,29 +87,50 @@ serve(async (req) => {
     const normalizedSecret = normalize(secretAnswer);
     const normalizedExpected = normalize(signupSecretAnswer);
 
-    const { data: recentAttempts } = await admin
+    const { data: recentAttempts, error: recentAttemptsError } = await admin
       .from("signup_attempts")
       .select("id, attempt_count, blocked_until")
       .ilike("email", email)
       .order("updated_at", { ascending: false })
       .limit(1);
 
+    if (recentAttemptsError) {
+      console.log("secure-signup signup_attempts lookup failed", {
+        email,
+        error: recentAttemptsError.message,
+        details: recentAttemptsError.details,
+        hint: recentAttemptsError.hint,
+        code: recentAttemptsError.code,
+        at: new Date().toISOString(),
+      });
+      throw new Error(`signup_attempts lookup failed: ${recentAttemptsError.message}`);
+    }
+
     const latest = recentAttempts?.[0] || null;
     const now = new Date();
     const blockedUntil = latest?.blocked_until ? new Date(latest.blocked_until) : null;
-    const currentlyBlocked = blockedUntil && blockedUntil > now;
+    const currentlyBlocked = Boolean(blockedUntil && blockedUntil > now);
 
     if (currentlyBlocked) {
-      await admin.from("signup_attempts").insert({
+      await logSignupAttempt({
         email,
         display_name: displayName,
         normalized_secret_answer: normalizedSecret,
         secret_ok: false,
-        attempt_count: latest.attempt_count,
-        blocked_until: blockedUntil.toISOString(),
+        attempt_count: latest?.attempt_count || 0,
+        blocked_until: blockedUntil!.toISOString(),
         ip,
         user_agent: userAgent,
       });
+
+      console.log("secure-signup denied", {
+        email,
+        reason: "still_blocked",
+        attemptCount: latest?.attempt_count || 0,
+        blockedUntil: blockedUntil!.toISOString(),
+        at: now.toISOString(),
+      });
+
       return genericResponse();
     }
 
@@ -95,7 +143,7 @@ serve(async (req) => {
         ? new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString()
         : null;
 
-      await admin.from("signup_attempts").insert({
+      await logSignupAttempt({
         email,
         display_name: displayName,
         normalized_secret_answer: normalizedSecret,
@@ -117,7 +165,7 @@ serve(async (req) => {
       return genericResponse();
     }
 
-    await admin.from("signup_attempts").insert({
+    await logSignupAttempt({
       email,
       display_name: displayName,
       normalized_secret_answer: normalizedSecret,

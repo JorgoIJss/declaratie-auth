@@ -390,6 +390,212 @@ function mapDeclarationToDb(draft, userId) {
   };
 }
 
+
+function AdminUsersTab({ isAdmin }) {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [adminMessage, setAdminMessage] = useState("");
+
+  async function loadUsers() {
+    if (!isAdmin) return;
+    setLoading(true);
+    setAdminMessage("");
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .order("email", { ascending: true });
+
+    setLoading(false);
+
+    if (error) {
+      setAdminMessage(`Gebruikers laden mislukt: ${error.message}`);
+      return;
+    }
+
+    setUsers(data || []);
+  }
+
+  async function disableUser(id) {
+    const { error } = await supabase.from("profiles").update({ disabled: true }).eq("id", id);
+    if (error) {
+      setAdminMessage(`Uitschakelen mislukt: ${error.message}`);
+      return;
+    }
+    loadUsers();
+  }
+
+  async function enableUser(id) {
+    const { error } = await supabase.from("profiles").update({ disabled: false }).eq("id", id);
+    if (error) {
+      setAdminMessage(`Inschakelen mislukt: ${error.message}`);
+      return;
+    }
+    loadUsers();
+  }
+
+  useEffect(() => {
+    if (isAdmin) loadUsers();
+  }, [isAdmin]);
+
+  if (!isAdmin) return null;
+
+  return (
+    <Card className="rounded-[28px] border-white/70 bg-white/80 shadow-sm backdrop-blur">
+      <CardHeader className="flex flex-row items-center justify-between gap-3">
+        <div>
+          <CardTitle>Users</CardTitle>
+          <p className="mt-1 text-sm text-slate-500">
+            Alleen zichtbaar voor admins. Hiermee kun je gebruikers uitschakelen of weer activeren.
+          </p>
+        </div>
+        <Button type="button" variant="outline" className="rounded-2xl" onClick={loadUsers} disabled={loading}>
+          {loading ? "Laden..." : "Vernieuwen"}
+        </Button>
+      </CardHeader>
+
+      <CardContent className="space-y-4">
+        {adminMessage ? (
+          <Alert className="rounded-3xl border-slate-200 bg-slate-50">
+            <AlertDescription>{adminMessage}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        <div className="overflow-hidden rounded-3xl border bg-white">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>E-mail</TableHead>
+                <TableHead>Naam</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Actie</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {users.map((u) => (
+                <TableRow key={u.id}>
+                  <TableCell className="break-all">{u.email || "-"}</TableCell>
+                  <TableCell>{u.display_name || "-"}</TableCell>
+                  <TableCell>
+                    <Badge variant={u.disabled ? "secondary" : "default"}>
+                      {u.disabled ? "Disabled" : "Active"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {u.disabled ? (
+                      <Button type="button" variant="outline" className="rounded-2xl" onClick={() => enableUser(u.id)}>
+                        Enable
+                      </Button>
+                    ) : (
+                      <Button type="button" variant="outline" className="rounded-2xl" onClick={() => disableUser(u.id)}>
+                        Disable
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+
+              {users.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center text-sm text-slate-500">
+                    Geen gebruikers gevonden.
+                  </TableCell>
+                </TableRow>
+              ) : null}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SignupAttemptsTab({ isAdmin }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [attemptsMessage, setAttemptsMessage] = useState("");
+
+  async function loadAttempts() {
+    if (!isAdmin) return;
+    setLoading(true);
+    setAttemptsMessage("");
+
+    const { data, error } = await supabase
+      .from("signup_attempts")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    setLoading(false);
+
+    if (error) {
+      setAttemptsMessage(`Signup attempts laden mislukt: ${error.message}`);
+      return;
+    }
+
+    setItems(data || []);
+  }
+
+  useEffect(() => {
+    if (isAdmin) loadAttempts();
+  }, [isAdmin]);
+
+  if (!isAdmin) return null;
+
+  return (
+    <Card className="rounded-[28px] border-white/70 bg-white/80 shadow-sm backdrop-blur">
+      <CardHeader className="flex flex-row items-center justify-between gap-3">
+        <div>
+          <CardTitle>Signup attempts</CardTitle>
+          <p className="mt-1 text-sm text-slate-500">
+            Alleen zichtbaar voor admins. Hier zie je mislukte of geblokkeerde aanmeldpogingen.
+          </p>
+        </div>
+        <Button type="button" variant="outline" className="rounded-2xl" onClick={loadAttempts} disabled={loading}>
+          {loading ? "Laden..." : "Vernieuwen"}
+        </Button>
+      </CardHeader>
+
+      <CardContent className="space-y-4">
+        {attemptsMessage ? (
+          <Alert className="rounded-3xl border-slate-200 bg-slate-50">
+            <AlertDescription>{attemptsMessage}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        <div className="overflow-hidden rounded-3xl border bg-white">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>E-mail</TableHead>
+                <TableHead>Secret OK</TableHead>
+                <TableHead>Pogingen</TableHead>
+                <TableHead>Blocked until</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.map((i) => (
+                <TableRow key={i.id}>
+                  <TableCell className="break-all">{i.email}</TableCell>
+                  <TableCell>{String(i.secret_ok)}</TableCell>
+                  <TableCell>{i.attempt_count}</TableCell>
+                  <TableCell>{i.blocked_until || "-"}</TableCell>
+                </TableRow>
+              ))}
+
+              {items.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center text-sm text-slate-500">
+                    Geen signup attempts gevonden.
+                  </TableCell>
+                </TableRow>
+              ) : null}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function DeclaratiesWebApp() {
   const [tab, setTab] = useState("declaraties");
   const [batch, setBatch] = useState([]);
@@ -402,6 +608,7 @@ export default function DeclaratiesWebApp() {
   const [authMode, setAuthMode] = useState("login");
   const [authError, setAuthError] = useState("");
   const [profileName, setProfileName] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [draft, setDraft] = useState(blankDraft());
   const [editingId, setEditingId] = useState(null);
@@ -463,6 +670,7 @@ export default function DeclaratiesWebApp() {
         setHistory([]);
         setSettings(defaultSettings);
         setProfileName("");
+        setIsAdmin(false);
         setTab("declaraties");
       }
     });
@@ -488,7 +696,7 @@ export default function DeclaratiesWebApp() {
       setIsBootLoading(true);
 
       try {
-        const [profileRes, settingsRes, batchRes, historyRes] = await Promise.all([
+        const [profileRes, settingsRes, batchRes, historyRes, rolesRes] = await Promise.all([
           supabase.from("profiles").select("*").eq("id", currentUser.id).maybeSingle(),
           supabase.from("user_settings").select("*").eq("user_id", currentUser.id).maybeSingle(),
           supabase
@@ -501,14 +709,18 @@ export default function DeclaratiesWebApp() {
             .select("*")
             .eq("user_id", currentUser.id)
             .order("sent_at", { ascending: false }),
+          supabase.from("user_roles").select("role").eq("user_id", currentUser.id),
         ]);
 
         if (profileRes.error) throw profileRes.error;
         if (settingsRes.error) throw settingsRes.error;
         if (batchRes.error) throw batchRes.error;
         if (historyRes.error) throw historyRes.error;
+        if (rolesRes.error) throw rolesRes.error;
         if (!active) return;
 
+        const roleList = (rolesRes.data || []).map((item) => item.role);
+        setIsAdmin(roleList.includes("admin"));
         setProfileName(profileRes.data?.display_name || currentUser.email || "");
         setSettings(mapSettingsFromDb(settingsRes.data));
         setBatch((batchRes.data || []).map(mapDeclarationFromDb));
@@ -1061,41 +1273,47 @@ export default function DeclaratiesWebApp() {
         )}
 
         <Tabs value={tab} onValueChange={setTab} className="space-y-5 md:space-y-6">
-          <TabsList className="grid h-auto w-full grid-cols-5 gap-1 rounded-[22px] border border-slate-200 bg-white/80 p-1 shadow-sm backdrop-blur">
-            <TabsTrigger
-              value="declaraties"
-              className="min-w-0 rounded-2xl px-1 py-3 text-[10px] font-semibold sm:px-2 sm:text-sm"
-            >
-              <Receipt className="mr-1.5 h-4 w-4" />
-              Declaraties
-            </TabsTrigger>
-            <TabsTrigger
-              value="historie"
-              className="min-w-0 rounded-2xl px-1 py-3 text-[10px] font-semibold sm:px-2 sm:text-sm"
-            >
-              <History className="mr-1.5 h-4 w-4" />
-              Historie
-            </TabsTrigger>
-            <TabsTrigger
-              value="settings"
-              className="min-w-0 rounded-2xl px-1 py-3 text-[10px] font-semibold sm:px-2 sm:text-sm"
-            >
-              <Settings className="mr-1.5 h-4 w-4" />
-              Settings
-            </TabsTrigger>
-                      <TabsTrigger
-              value="admin-users"
-              className="min-w-0 rounded-2xl px-1 py-3 text-[10px] font-semibold sm:px-2 sm:text-sm"
-            >
-              Users
-            </TabsTrigger>
-            <TabsTrigger
-              value="signup-attempts"
-              className="min-w-0 rounded-2xl px-1 py-3 text-[10px] font-semibold sm:px-2 sm:text-sm"
-            >
-              Signup attempts
-            </TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <TabsList className="inline-flex min-w-max h-[66px] items-center gap-1 rounded-[22px] border border-slate-200 bg-white/80 p-2 shadow-sm backdrop-blur">
+              <TabsTrigger
+                value="declaraties"
+                className="shrink-0 rounded-2xl px-4 py-3 text-sm font-semibold"
+              >
+                <Receipt className="mr-1.5 h-4 w-4" />
+                Declaraties
+              </TabsTrigger>
+              <TabsTrigger
+                value="historie"
+                className="shrink-0 rounded-2xl px-4 py-3 text-sm font-semibold"
+              >
+                <History className="mr-1.5 h-4 w-4" />
+                Historie
+              </TabsTrigger>
+              <TabsTrigger
+                value="settings"
+                className="shrink-0 rounded-2xl px-4 py-3 text-sm font-semibold"
+              >
+                <Settings className="mr-1.5 h-4 w-4" />
+                Settings
+              </TabsTrigger>
+              {isAdmin ? (
+                <TabsTrigger
+                  value="admin-users"
+                  className="shrink-0 rounded-2xl px-4 py-3 text-sm font-semibold"
+                >
+                  Users
+                </TabsTrigger>
+              ) : null}
+              {isAdmin ? (
+                <TabsTrigger
+                  value="signup-attempts"
+                  className="shrink-0 rounded-2xl px-4 py-3 text-sm font-semibold"
+                >
+                  Signup attempts
+                </TabsTrigger>
+              ) : null}
+            </TabsList>
+          </div>
 
           <TabsContent value="declaraties" className="space-y-4 md:space-y-6">
             <div className="grid gap-4 md:gap-6 lg:grid-cols-[1.2fr_0.8fr]">
@@ -1414,11 +1632,11 @@ export default function DeclaratiesWebApp() {
             </Card>
           </TabsContent>
           <TabsContent value="admin-users">
-            <AdminUsersTab supabase={supabase} />
+            <AdminUsersTab isAdmin={isAdmin} />
           </TabsContent>
 
           <TabsContent value="signup-attempts">
-            <SignupAttemptsTab supabase={supabase} />
+            <SignupAttemptsTab isAdmin={isAdmin} />
           </TabsContent>
         </Tabs>
 

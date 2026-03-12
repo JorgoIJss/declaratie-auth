@@ -390,75 +390,7 @@ function mapDeclarationToDb(draft, userId) {
   };
 }
 
-
-function SignupAttemptsAdminTab({ user }) {
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [roles, setRoles] = useState({ checked:false, admin:false, approver:false });
-
-  useEffect(()=>{
-    async function loadRole(){
-      if(!user?.id) return;
-      const {data} = await supabase.from("user_roles").select("role").eq("user_id", user.id);
-      const r=(data||[]).map(x=>x.role);
-      setRoles({checked:true, admin:r.includes("admin"), approver:r.includes("approver")});
-    }
-    loadRole();
-  },[user?.id]);
-
-  async function loadAttempts(){
-    setLoading(true);
-    const {data}=await supabase.rpc("get_recent_signup_attempts",{limit_count:100});
-    setItems(data||[]);
-    setLoading(false);
-  }
-
-  useEffect(()=>{
-    if(roles.admin||roles.approver) loadAttempts();
-  },[roles]);
-
-  if(!roles.checked || (!roles.admin && !roles.approver)) return null;
-
-  return (
-    <Card className="rounded-[28px] border-white/70 bg-white/80 shadow-sm backdrop-blur">
-      <CardHeader>
-        <CardTitle>Signup attempts</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <Button onClick={loadAttempts} disabled={loading}>Vernieuwen</Button>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Email</TableHead>
-              <TableHead>Naam</TableHead>
-              <TableHead>Pogingen</TableHead>
-              <TableHead>Geheim</TableHead>
-              <TableHead>Geblokkeerd tot</TableHead>
-              <TableHead>Laatste poging</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {items.map(i=>(
-              <TableRow key={i.id}>
-                <TableCell>{i.email}</TableCell>
-                <TableCell>{i.display_name}</TableCell>
-                <TableCell>{i.attempt_count}</TableCell>
-                <TableCell>{i.secret_ok ? "OK":"FOUT"}</TableCell>
-                <TableCell>{i.blocked_until? new Date(i.blocked_until).toLocaleString("nl-NL"):"-"}</TableCell>
-                <TableCell>{new Date(i.updated_at).toLocaleString("nl-NL")}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
-  );
-}
-
-
 export default function DeclaratiesWebApp() {
-  const [authMessage, setAuthMessage] = useState("");
-  const [authLoading, setAuthLoading] = useState(false);
   const [tab, setTab] = useState("declaraties");
   const [batch, setBatch] = useState([]);
   const [history, setHistory] = useState([]);
@@ -469,7 +401,6 @@ export default function DeclaratiesWebApp() {
   const [isAuthSubmitting, setIsAuthSubmitting] = useState(false);
   const [authMode, setAuthMode] = useState("login");
   const [authError, setAuthError] = useState("");
-  const [secretAnswer, setSecretAnswer] = useState("");
   const [profileName, setProfileName] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [draft, setDraft] = useState(blankDraft());
@@ -625,7 +556,7 @@ export default function DeclaratiesWebApp() {
     };
   }, [settings, isBootLoading, currentUser?.id]);
 
-  async function handleAuthSubmit({ mode, email, password, displayName }) {
+  async function handleAuthSubmit({ mode, email, password, displayName, secretAnswer }) {
     setIsAuthSubmitting(true);
     setAuthError("");
 
@@ -636,20 +567,21 @@ export default function DeclaratiesWebApp() {
           headers: {
             "Content-Type": "application/json",
             apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify({
             displayName: displayName || "",
             email,
             password,
-            secretAnswer
-          })
+            secretAnswer: secretAnswer || "",
+          }),
         });
 
-        await res.json().catch(()=>({}));
+        await res.json().catch(() => ({}));
+
         setAuthMode("login");
         setAuthError(
-          "Account aangemaakt. Controleer je e-mail als bevestiging aan staat en log daarna in."
+          "Als je gegevens correct zijn, ontvang je een bevestigingsmail of verdere instructies."
         );
         return;
       }
@@ -1151,8 +1083,7 @@ export default function DeclaratiesWebApp() {
               <Settings className="mr-1.5 h-4 w-4" />
               Settings
             </TabsTrigger>
-            <TabsTrigger value="signup-attempts">Signup attempts</TabsTrigger>
-</TabsList>
+          </TabsList>
 
           <TabsContent value="declaraties" className="space-y-4 md:space-y-6">
             <div className="grid gap-4 md:gap-6 lg:grid-cols-[1.2fr_0.8fr]">
@@ -1470,8 +1401,7 @@ export default function DeclaratiesWebApp() {
               </CardContent>
             </Card>
           </TabsContent>
-          <TabsContent value="signup-attempts"><SignupAttemptsAdminTab user={currentUser} /></TabsContent>
-</Tabs>
+        </Tabs>
 
         <Dialog
           open={previewState.open}
@@ -1836,6 +1766,7 @@ function AuthScreen({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [secretAnswer, setSecretAnswer] = useState("");
 
   return (
     <div className="min-h-screen bg-transparent px-3 pb-6 pt-[max(12px,env(safe-area-inset-top))] md:px-6 md:pb-8">
@@ -1886,11 +1817,23 @@ function AuthScreen({
               />
             </Field>
 
+            {authMode === "signup" ? (
+              <Field label="Wat is onze naam?">
+                <Input
+                  className="h-11 rounded-2xl"
+                  value={secretAnswer}
+                  onChange={(e) => setSecretAnswer(e.target.value)}
+                  placeholder="Jouw antwoord"
+                  autoComplete="off"
+                />
+              </Field>
+            ) : null}
+
             <div className="grid gap-2">
               <Button
                 className="h-11 rounded-2xl"
                 disabled={isSubmitting}
-                onClick={() => onSubmit({ mode: authMode, email, password, displayName })}
+                onClick={() => onSubmit({ mode: authMode, email, password, displayName, secretAnswer })}
               >
                 {isSubmitting
                   ? authMode === "login"

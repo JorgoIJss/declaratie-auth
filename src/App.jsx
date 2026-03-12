@@ -631,6 +631,7 @@ export default function DeclaratiesWebApp() {
 
   const settingsLoadedRef = useRef(false);
   const settingsAutoSaveTimeoutRef = useRef(null);
+  const adminOnlyTabs = ["taps", "admin-users", "signup-attempts"];
 
   const total = useMemo(
     () =>
@@ -767,6 +768,12 @@ export default function DeclaratiesWebApp() {
       if (settingsAutoSaveTimeoutRef.current) clearTimeout(settingsAutoSaveTimeoutRef.current);
     };
   }, [settings, isBootLoading, currentUser?.id]);
+
+  useEffect(() => {
+    if (!isAdmin && adminOnlyTabs.includes(tab)) {
+      setTab("declaraties");
+    }
+  }, [isAdmin, tab]);
 
   async function handleAuthSubmit({ mode, email, password, displayName, secretAnswer }) {
     setIsAuthSubmitting(true);

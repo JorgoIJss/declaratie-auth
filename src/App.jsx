@@ -1061,30 +1061,40 @@ export default function DeclaratiesWebApp() {
         )}
 
         <Tabs value={tab} onValueChange={setTab} className="space-y-5 md:space-y-6">
-          <TabsList className="grid h-auto w-full grid-cols-3 rounded-[22px] border border-slate-200 bg-white/80 p-1 shadow-sm backdrop-blur">
+          <TabsList className="grid h-auto w-full grid-cols-5 gap-1 rounded-[22px] border border-slate-200 bg-white/80 p-1 shadow-sm backdrop-blur">
             <TabsTrigger
               value="declaraties"
-              className="rounded-2xl px-2 py-3 text-[11px] font-semibold sm:text-sm"
+              className="min-w-0 rounded-2xl px-1 py-3 text-[10px] font-semibold sm:px-2 sm:text-sm"
             >
               <Receipt className="mr-1.5 h-4 w-4" />
               Declaraties
             </TabsTrigger>
             <TabsTrigger
               value="historie"
-              className="rounded-2xl px-2 py-3 text-[11px] font-semibold sm:text-sm"
+              className="min-w-0 rounded-2xl px-1 py-3 text-[10px] font-semibold sm:px-2 sm:text-sm"
             >
               <History className="mr-1.5 h-4 w-4" />
               Historie
             </TabsTrigger>
             <TabsTrigger
               value="settings"
-              className="rounded-2xl px-2 py-3 text-[11px] font-semibold sm:text-sm"
+              className="min-w-0 rounded-2xl px-1 py-3 text-[10px] font-semibold sm:px-2 sm:text-sm"
             >
               <Settings className="mr-1.5 h-4 w-4" />
               Settings
             </TabsTrigger>
-                      <TabsTrigger value="admin-users">Users</TabsTrigger>
-            <TabsTrigger value="signup-attempts">Signup attempts</TabsTrigger>
+                      <TabsTrigger
+              value="admin-users"
+              className="min-w-0 rounded-2xl px-1 py-3 text-[10px] font-semibold sm:px-2 sm:text-sm"
+            >
+              Users
+            </TabsTrigger>
+            <TabsTrigger
+              value="signup-attempts"
+              className="min-w-0 rounded-2xl px-1 py-3 text-[10px] font-semibold sm:px-2 sm:text-sm"
+            >
+              Signup attempts
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="declaraties" className="space-y-4 md:space-y-6">

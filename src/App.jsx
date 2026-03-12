@@ -1465,7 +1465,7 @@ export default function DeclaratiesWebApp() {
               </CardContent>
             </Card>
           </TabsContent>
-          <TabsContent value="signup-attempts"><SignupAttemptsAdminTab user={user} /></TabsContent>
+          <TabsContent value="signup-attempts"><SignupAttemptsAdminTab user={currentUser} /></TabsContent>
 </Tabs>
 
         <Dialog

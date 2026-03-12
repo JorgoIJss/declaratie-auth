@@ -391,6 +391,16 @@ function mapDeclarationToDb(draft, userId) {
 }
 
 
+function Field({ label, children }) {
+  return (
+    <div className="space-y-2.5">
+      <Label className="text-sm font-medium text-slate-700">{label}</Label>
+      {children}
+    </div>
+  );
+}
+
+
 function AdminUsersTab({ isAdmin }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -600,10 +610,6 @@ export default function DeclaratiesWebApp() {
   const [tab, setTab] = useState("declaraties");
   const [batch, setBatch] = useState([]);
   const [history, setHistory] = useState([]);
-  const [selectedHistory, setSelectedHistory] = useState(null);
-  const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false);
-  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
-  const [historyDialogError, setHistoryDialogError] = useState("");
   const [settings, setSettings] = useState(defaultSettings);
   const [currentUser, setCurrentUser] = useState(null);
   const [session, setSession] = useState(null);
@@ -1187,56 +1193,6 @@ export default function DeclaratiesWebApp() {
     }
   }
 
-  async function openHistoryDetails(entry) {
-    setHistoryDialogError("");
-    setSelectedHistory(entry);
-    setIsHistoryDialogOpen(true);
-
-    const existingDeclarations = Array.isArray(entry?.declarations)
-      ? entry.declarations.filter((item) => item && (item.supplier || item.reason || item.amount || item.date))
-      : [];
-
-    if (existingDeclarations.length) {
-      return;
-    }
-
-    setIsHistoryLoading(true);
-
-    try {
-      const { data, error } = await supabase
-        .from("send_history_items")
-        .select("*")
-        .eq("history_id", entry.id)
-        .order("position", { ascending: true });
-
-      if (error) throw error;
-
-      const details = (data || []).map((item) => ({
-        id: item.declaration_id || `${entry.id}-${item.position}`,
-        date: item.date || "",
-        supplier: item.supplier || "",
-        reason: item.reason || "",
-        amount: item.amount ?? "",
-        hasReceipt: item.has_receipt,
-        noReceiptReason: item.no_receipt_reason || "",
-        note: item.note || "",
-        attachmentName: item.attachment_name || "",
-        attachmentPublicUrl: item.attachment_public_url || "",
-        attachmentPath: item.attachment_path || "",
-      }));
-
-      setHistory((prev) =>
-        prev.map((item) => (item.id === entry.id ? { ...item, declarations: details } : item))
-      );
-      setSelectedHistory((prev) => (prev && prev.id === entry.id ? { ...prev, declarations: details } : prev));
-    } catch (err) {
-      console.error(err);
-      setHistoryDialogError(`Historiedetails laden mislukt: ${err.message}`);
-    } finally {
-      setIsHistoryLoading(false);
-    }
-  }
-
   async function saveSettingsToSupabase() {
     try {
       await upsertSettings(settings, true);
@@ -1570,11 +1526,9 @@ export default function DeclaratiesWebApp() {
                   </div>
                 ) : (
                   history.map((entry) => (
-                    <button
+                    <div
                       key={entry.id}
-                      type="button"
-                      onClick={() => openHistoryDetails(entry)}
-                      className="w-full rounded-3xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+                      className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
                     >
                       <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0">
@@ -1582,115 +1536,15 @@ export default function DeclaratiesWebApp() {
                           <div className="mt-1 text-sm text-slate-500">
                             {new Date(entry.sentAt).toLocaleString("nl-NL")} • {entry.mode}
                           </div>
-                          <div className="mt-2 text-sm text-blue-700">Klik om de declaraties in deze zending te bekijken</div>
                         </div>
                         <Badge>{entry.declarations.length} declaratie(s)</Badge>
                       </div>
-                    </button>
+                    </div>
                   ))
                 )}
               </CardContent>
             </Card>
           </TabsContent>
-
-          <Dialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen}>
-            <DialogContent className="max-h-[85vh] overflow-y-auto rounded-[28px] sm:max-w-3xl">
-              <DialogHeader>
-                <DialogTitle>Verzonden declaraties</DialogTitle>
-              </DialogHeader>
-
-              <div className="space-y-4">
-                {selectedHistory ? (
-                  <div className="rounded-3xl border border-slate-200 bg-slate-50/70 p-4">
-                    <div className="font-medium text-slate-900">{selectedHistory.subject}</div>
-                    <div className="mt-1 text-sm text-slate-500">
-                      {new Date(selectedHistory.sentAt).toLocaleString("nl-NL")} • {selectedHistory.mode}
-                    </div>
-                  </div>
-                ) : null}
-
-                {historyDialogError ? (
-                  <Alert className="rounded-3xl border-red-200 bg-red-50 text-red-900">
-                    <AlertDescription>{historyDialogError}</AlertDescription>
-                  </Alert>
-                ) : null}
-
-                {isHistoryLoading ? (
-                  <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50/70 p-8 text-center text-sm text-slate-500">
-                    Historiedetails laden...
-                  </div>
-                ) : null}
-
-                {!isHistoryLoading && selectedHistory?.declarations?.length ? (
-                  <div className="space-y-3">
-                    {selectedHistory.declarations.map((item, index) => {
-                      const receiptUrl = item.attachmentPublicUrl || item.attachmentUrl || "";
-                      return (
-                        <div key={item.id || `${selectedHistory.id}-${index}`} className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div>
-                              <div className="font-medium text-slate-900">{item.supplier || "Declaratie"}</div>
-                              <div className="mt-1 text-sm text-slate-500">{item.date || "-"} • {item.reason || "-"}</div>
-                            </div>
-                            <Badge>{euro(item.amount || 0)}</Badge>
-                          </div>
-
-                          <div className="mt-4 grid gap-3 md:grid-cols-2">
-                            <div className="rounded-2xl bg-slate-50 p-3 text-sm">
-                              <div className="text-slate-500">Bon aanwezig</div>
-                              <div className="mt-1 font-medium text-slate-900">{item.hasReceipt ? "Ja" : "Nee"}</div>
-                            </div>
-                            <div className="rounded-2xl bg-slate-50 p-3 text-sm">
-                              <div className="text-slate-500">Bestandsnaam bon</div>
-                              <div className="mt-1 break-all font-medium text-slate-900">{item.attachmentName || "Niet opgeslagen in historie"}</div>
-                            </div>
-                          </div>
-
-                          {item.note ? (
-                            <div className="mt-3 rounded-2xl bg-slate-50 p-3 text-sm">
-                              <div className="text-slate-500">Notitie</div>
-                              <div className="mt-1 whitespace-pre-wrap text-slate-900">{item.note}</div>
-                            </div>
-                          ) : null}
-
-                          {!item.hasReceipt && item.noReceiptReason ? (
-                            <div className="mt-3 rounded-2xl bg-amber-50 p-3 text-sm text-amber-900">
-                              <div className="font-medium">Reden geen bon</div>
-                              <div className="mt-1 whitespace-pre-wrap">{item.noReceiptReason}</div>
-                            </div>
-                          ) : null}
-
-                          <div className="mt-4 flex flex-wrap gap-2">
-                            {receiptUrl ? (
-                              <Button type="button" variant="outline" className="rounded-2xl" asChild>
-                                <a href={receiptUrl} target="_blank" rel="noreferrer">Bekijk bon</a>
-                              </Button>
-                            ) : (
-                              <div className="text-sm text-slate-500">
-                                Voor deze declaratie is in de opgeslagen historie geen klikbare bonlink beschikbaar.
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : null}
-
-                {!isHistoryLoading && selectedHistory && (!selectedHistory.declarations || selectedHistory.declarations.length === 0) ? (
-                  <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50/70 p-8 text-center text-sm text-slate-500">
-                    Deze zending bevat nog geen detailregels in de historie.
-                  </div>
-                ) : null}
-              </div>
-
-              <DialogFooter>
-                <Button type="button" variant="outline" className="rounded-2xl" onClick={() => setIsHistoryDialogOpen(false)}>
-                  Sluiten
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
 
           <TabsContent value="settings">
             <Card className="rounded-[28px] border-white/70 bg-white/80 shadow-sm backdrop-blur">

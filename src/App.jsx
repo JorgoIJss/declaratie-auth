@@ -1083,6 +1083,8 @@ export default function DeclaratiesWebApp() {
               <Settings className="mr-1.5 h-4 w-4" />
               Settings
             </TabsTrigger>
+                      <TabsTrigger value="admin-users">Users</TabsTrigger>
+            <TabsTrigger value="signup-attempts">Signup attempts</TabsTrigger>
           </TabsList>
 
           <TabsContent value="declaraties" className="space-y-4 md:space-y-6">
@@ -1400,6 +1402,13 @@ export default function DeclaratiesWebApp() {
                 </Button>
               </CardContent>
             </Card>
+          </TabsContent>
+          <TabsContent value="admin-users">
+            <AdminUsersTab supabase={supabase} />
+          </TabsContent>
+
+          <TabsContent value="signup-attempts">
+            <SignupAttemptsTab supabase={supabase} />
           </TabsContent>
         </Tabs>
 
@@ -1889,3 +1898,98 @@ function Field({ label, children }) {
     </div>
   );
 }
+
+// ================= ADMIN COMPONENTS =================
+
+function AdminUsersTab({ supabase }) {
+  const [users,setUsers]=React.useState([]);
+
+  async function loadUsers(){
+    const {data}=await supabase.from("profiles").select("*");
+    setUsers(data||[]);
+  }
+
+  async function disableUser(id){
+    await supabase.from("profiles").update({disabled:true}).eq("id",id);
+    loadUsers();
+  }
+
+  async function enableUser(id){
+    await supabase.from("profiles").update({disabled:false}).eq("id",id);
+    loadUsers();
+  }
+
+  React.useEffect(()=>{loadUsers()},[]);
+
+  return (
+    <Card className="mt-4">
+      <CardHeader><CardTitle>Admin · Users</CardTitle></CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Email</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Action</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {users.map(u=>(
+              <TableRow key={u.id}>
+                <TableCell>{u.email}</TableCell>
+                <TableCell>{u.disabled ? "Disabled":"Active"}</TableCell>
+                <TableCell>
+                  {u.disabled ? (
+                    <Button onClick={()=>enableUser(u.id)}>Enable</Button>
+                  ) : (
+                    <Button variant="destructive" onClick={()=>disableUser(u.id)}>Disable</Button>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  )
+}
+
+function SignupAttemptsTab({ supabase }){
+  const [items,setItems]=React.useState([]);
+
+  async function load(){
+    const {data}=await supabase.from("signup_attempts").select("*").order("created_at",{ascending:false});
+    setItems(data||[]);
+  }
+
+  React.useEffect(()=>{load()},[]);
+
+  return (
+    <Card className="mt-4">
+      <CardHeader><CardTitle>Signup Attempts</CardTitle></CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Email</TableHead>
+              <TableHead>Secret OK</TableHead>
+              <TableHead>Attempts</TableHead>
+              <TableHead>Blocked</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.map(i=>(
+              <TableRow key={i.id}>
+                <TableCell>{i.email}</TableCell>
+                <TableCell>{String(i.secret_ok)}</TableCell>
+                <TableCell>{i.attempt_count}</TableCell>
+                <TableCell>{i.blocked_until}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  )
+}
+

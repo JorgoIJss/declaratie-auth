@@ -469,6 +469,7 @@ export default function DeclaratiesWebApp() {
   const [isAuthSubmitting, setIsAuthSubmitting] = useState(false);
   const [authMode, setAuthMode] = useState("login");
   const [authError, setAuthError] = useState("");
+  const [secretAnswer, setSecretAnswer] = useState("");
   const [profileName, setProfileName] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [draft, setDraft] = useState(blankDraft());
@@ -630,18 +631,22 @@ export default function DeclaratiesWebApp() {
 
     try {
       if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              display_name: displayName || "",
-            },
+        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/secure-signup`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
           },
+          body: JSON.stringify({
+            displayName: displayName || "",
+            email,
+            password,
+            secretAnswer
+          })
         });
 
-        if (error) throw error;
-
+        await res.json().catch(()=>({}));
         setAuthMode("login");
         setAuthError(
           "Account aangemaakt. Controleer je e-mail als bevestiging aan staat en log daarna in."

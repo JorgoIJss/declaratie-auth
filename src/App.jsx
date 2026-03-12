@@ -391,6 +391,16 @@ function mapDeclarationToDb(draft, userId) {
 }
 
 
+function Field({ label, children }) {
+  return (
+    <div className="space-y-2.5">
+      <Label className="text-sm font-medium text-slate-700">{label}</Label>
+      {children}
+    </div>
+  );
+}
+
+
 function AdminUsersTab({ isAdmin }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);

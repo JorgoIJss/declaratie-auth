@@ -181,113 +181,6 @@ function buildUniqueFileName(declaration, index, submitterName = "Jorgo") {
   return buildAttachmentFilename(declaration, submitterName, index);
 }
 
-
-function withJpgExtension(filename) {
-  const base = String(filename || "bon")
-    .replace(/\.[^.]+$/, "")
-    .replace(/\s+/g, "_")
-    .trim();
-  return `${base || "bon"}.jpg`;
-}
-
-async function compressImageFile(file, options = {}) {
-  const maxWidth = options.maxWidth || 1600;
-  const maxHeight = options.maxHeight || 1600;
-  const quality = options.quality || 0.78;
-
-  if (!file || !String(file.type || "").startsWith("image/")) {
-    return file;
-  }
-
-  try {
-    const objectUrl = URL.createObjectURL(file);
-    const bitmap = await new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = reject;
-      img.src = objectUrl;
-    });
-
-    const originalWidth = bitmap.naturalWidth || bitmap.width;
-    const originalHeight = bitmap.naturalHeight || bitmap.height;
-
-    if (!originalWidth || !originalHeight) {
-      URL.revokeObjectURL(objectUrl);
-      return file;
-    }
-
-    const ratio = Math.min(maxWidth / originalWidth, maxHeight / originalHeight, 1);
-    const targetWidth = Math.max(1, Math.round(originalWidth * ratio));
-    const targetHeight = Math.max(1, Math.round(originalHeight * ratio));
-
-    const canvas = document.createElement("canvas");
-    canvas.width = targetWidth;
-    canvas.height = targetHeight;
-
-    const context = canvas.getContext("2d");
-    if (!context) {
-      URL.revokeObjectURL(objectUrl);
-      return file;
-    }
-
-    context.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
-
-    const compressedBlob = await new Promise((resolve) => {
-      canvas.toBlob(resolve, "image/jpeg", quality);
-    });
-
-    URL.revokeObjectURL(objectUrl);
-
-    if (!compressedBlob) return file;
-    if (compressedBlob.size >= file.size && ratio === 1) return file;
-
-    return new File([compressedBlob], withJpgExtension(file.name), {
-      type: "image/jpeg",
-      lastModified: Date.now(),
-    });
-  } catch (error) {
-    console.warn("Afbeelding comprimeren mislukt, origineel bestand wordt gebruikt.", error);
-    return file;
-  }
-}
-
-function buildHistoryAttachmentPath(item, userId) {
-  if (!item?.attachmentName || !item?.declarationId || !userId) return "";
-  return `${SUPABASE_STORAGE_ROOT}/${userId}/${item.declarationId}-${item.attachmentName}`;
-}
-
-function getPublicReceiptUrl(filePath) {
-  if (!filePath) return "";
-  const { data } = supabase.storage.from(RECEIPTS_BUCKET).getPublicUrl(filePath);
-  return data?.publicUrl || "";
-}
-
-function mapHistoryItemFromDb(row, userId) {
-  const attachmentPath = buildHistoryAttachmentPath(
-    {
-      declarationId: row.declaration_id,
-      attachmentName: row.attachment_name,
-    },
-    userId
-  );
-  return {
-    id: row.id || `${row.history_id}-${row.position || row.declaration_id || Math.random()}`,
-    historyId: row.history_id,
-    declarationId: row.declaration_id,
-    date: row.date,
-    supplier: row.supplier || "",
-    reason: row.reason || "",
-    amount: row.amount != null ? String(row.amount) : "",
-    hasReceipt: row.has_receipt ?? true,
-    noReceiptReason: row.no_receipt_reason || "",
-    note: row.note || "",
-    attachmentName: row.attachment_name || "",
-    attachmentPath,
-    attachmentPublicUrl: getPublicReceiptUrl(attachmentPath),
-    position: row.position || 0,
-  };
-}
-
 function escapeHtml(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -735,13 +628,6 @@ export default function DeclaratiesWebApp() {
     width: 1000,
     height: 620,
   });
-  const [historyDetailState, setHistoryDetailState] = useState({
-    open: false,
-    loading: false,
-    entry: null,
-    items: [],
-    message: "",
-  });
 
   const settingsLoadedRef = useRef(false);
   const settingsAutoSaveTimeoutRef = useRef(null);
@@ -993,9 +879,8 @@ export default function DeclaratiesWebApp() {
       };
     }
 
-    const preparedFile = await compressImageFile(file);
     const cleanFileName = buildAttachmentFilenameFromFile(
-      preparedFile,
+      file,
       declaration,
       settings.signatureName || declaration.submitterName || "Jorgo"
     );
@@ -1003,9 +888,9 @@ export default function DeclaratiesWebApp() {
 
     const { error: uploadError } = await supabase.storage
       .from(RECEIPTS_BUCKET)
-      .upload(filePath, preparedFile, {
+      .upload(filePath, file, {
         upsert: true,
-        contentType: preparedFile.type || "application/octet-stream",
+        contentType: file.type || "application/octet-stream",
       });
 
     if (uploadError) throw uploadError;
@@ -1014,7 +899,7 @@ export default function DeclaratiesWebApp() {
 
     return {
       attachmentName: cleanFileName,
-      attachmentType: preparedFile.type || declaration.attachmentType || "application/octet-stream",
+      attachmentType: file.type || declaration.attachmentType || "application/octet-stream",
       attachmentPath: filePath,
       attachmentPublicUrl: publicUrlData?.publicUrl || "",
     };
@@ -1196,22 +1081,6 @@ export default function DeclaratiesWebApp() {
       mode: historyRow.mode,
       subject: historyRow.subject,
       declarations: group,
-      items: group.map((g, index) => ({
-        id: `${historyId}-${index + 1}`,
-        historyId,
-        declarationId: g.id,
-        date: g.date,
-        supplier: g.supplier,
-        reason: g.reason,
-        amount: g.amount,
-        hasReceipt: g.hasReceipt,
-        noReceiptReason: g.noReceiptReason || "",
-        note: g.note || "",
-        attachmentName: g.attachmentName || "",
-        attachmentPath: g.attachmentPath || "",
-        attachmentPublicUrl: g.attachmentPublicUrl || "",
-        position: index + 1,
-      })),
     };
   }
 
@@ -1278,12 +1147,14 @@ export default function DeclaratiesWebApp() {
       const groups = sendIndividually ? batch.map((d) => [d]) : [batch];
       const historyEntries = [];
       const sentIds = [];
+      const sentPaths = [];
 
       for (const group of groups) {
         const { emailData } = await sendGroupToEdgeFunction(group);
         const historyEntry = await insertHistoryGroup(group, emailData);
         historyEntries.push(historyEntry);
         sentIds.push(...group.map((item) => item.id).filter(Boolean));
+        sentPaths.push(...group.map((item) => item.attachmentPath).filter(Boolean));
       }
 
       if (sentIds.length) {
@@ -1294,12 +1165,15 @@ export default function DeclaratiesWebApp() {
         if (deleteError) throw deleteError;
       }
 
+      if (sentPaths.length) {
+        await supabase.storage.from(RECEIPTS_BUCKET).remove(sentPaths);
+      }
 
       setHistory((prev) => [...historyEntries, ...prev]);
       setBatch((prev) => prev.filter((item) => !sentIds.includes(item.id)));
       setTab("declaraties");
       setMessage(
-        `Mail${groups.length > 1 ? "s" : ""} verzonden, historie opgeslagen en bonnen bewaard.`
+        `Mail${groups.length > 1 ? "s" : ""} verzonden, historie opgeslagen en batch bijgewerkt.`
       );
     } catch (err) {
       console.error(err);
@@ -1307,59 +1181,6 @@ export default function DeclaratiesWebApp() {
     } finally {
       setIsSending(false);
     }
-  }
-
-
-  async function openHistoryDetail(entry) {
-    if (!entry?.id || !currentUser?.id) return;
-
-    if (entry.items?.length) {
-      setHistoryDetailState({
-        open: true,
-        loading: false,
-        entry,
-        items: entry.items,
-        message: "",
-      });
-      return;
-    }
-
-    setHistoryDetailState({
-      open: true,
-      loading: true,
-      entry,
-      items: [],
-      message: "",
-    });
-
-    const { data, error } = await supabase
-      .from("send_history_items")
-      .select("*")
-      .eq("history_id", entry.id)
-      .order("position", { ascending: true });
-
-    if (error) {
-      setHistoryDetailState({
-        open: true,
-        loading: false,
-        entry,
-        items: [],
-        message: `Historiedetails laden mislukt: ${error.message}`,
-      });
-      return;
-    }
-
-    const mappedItems = (data || []).map((row) => mapHistoryItemFromDb(row, currentUser.id));
-    const hydratedEntry = { ...entry, items: mappedItems };
-
-    setHistory((prev) => prev.map((item) => (item.id === entry.id ? hydratedEntry : item)));
-    setHistoryDetailState({
-      open: true,
-      loading: false,
-      entry: hydratedEntry,
-      items: mappedItems,
-      message: "",
-    });
   }
 
   async function saveSettingsToSupabase() {
@@ -1695,11 +1516,9 @@ export default function DeclaratiesWebApp() {
                   </div>
                 ) : (
                   history.map((entry) => (
-                    <button
+                    <div
                       key={entry.id}
-                      type="button"
-                      onClick={() => openHistoryDetail(entry)}
-                      className="block w-full rounded-3xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-slate-300 hover:shadow"
+                      className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
                     >
                       <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0">
@@ -1707,18 +1526,10 @@ export default function DeclaratiesWebApp() {
                           <div className="mt-1 text-sm text-slate-500">
                             {new Date(entry.sentAt).toLocaleString("nl-NL")} • {entry.mode}
                           </div>
-                          <div className="mt-2 text-xs text-slate-500">
-                            Klik om de declaraties en bonnen terug te kijken.
-                          </div>
                         </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                          <Badge>{entry.declarations.length} declaratie(s)</Badge>
-                          <Button type="button" variant="outline" className="rounded-2xl">
-                            Bekijk
-                          </Button>
-                        </div>
+                        <Badge>{entry.declarations.length} declaratie(s)</Badge>
                       </div>
-                    </button>
+                    </div>
                   ))
                 )}
               </CardContent>
@@ -1828,114 +1639,6 @@ export default function DeclaratiesWebApp() {
             <SignupAttemptsTab isAdmin={isAdmin} />
           </TabsContent>
         </Tabs>
-
-        <Dialog
-          open={historyDetailState.open}
-          onOpenChange={(open) =>
-            setHistoryDetailState((prev) => ({
-              ...prev,
-              open,
-              message: open ? prev.message : "",
-            }))
-          }
-        >
-          <DialogContent className="max-h-[90dvh] overflow-y-auto rounded-[28px] sm:max-w-4xl">
-            <DialogHeader>
-              <DialogTitle>Verzonden declaraties</DialogTitle>
-            </DialogHeader>
-
-            <div className="space-y-4">
-              {historyDetailState.entry ? (
-                <div className="rounded-3xl border bg-slate-50 p-4 text-sm text-slate-600">
-                  <div className="font-medium text-slate-900">{historyDetailState.entry.subject}</div>
-                  <div className="mt-1">
-                    {new Date(historyDetailState.entry.sentAt).toLocaleString("nl-NL")} • {historyDetailState.entry.mode}
-                  </div>
-                </div>
-              ) : null}
-
-              {historyDetailState.message ? (
-                <Alert className="rounded-3xl border-slate-200 bg-slate-50">
-                  <AlertDescription>{historyDetailState.message}</AlertDescription>
-                </Alert>
-              ) : null}
-
-              {historyDetailState.loading ? (
-                <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50/70 p-8 text-center text-sm text-slate-500">
-                  Historiedetails worden geladen...
-                </div>
-              ) : historyDetailState.items.length === 0 ? (
-                <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50/70 p-8 text-center text-sm text-slate-500">
-                  Geen declaratieregels gevonden voor deze verzending.
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {historyDetailState.items.map((item, index) => (
-                    <div key={item.id} className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <div className="text-sm font-semibold text-slate-900">
-                            {index + 1}. {item.supplier || "-"}
-                          </div>
-                          <div className="mt-1 text-sm text-slate-500">
-                            {formatDateNl(item.date)} • {item.reason || "-"}
-                          </div>
-                        </div>
-                        <Badge variant={item.hasReceipt ? "default" : "secondary"}>
-                          {item.hasReceipt ? "Bon aanwezig" : "Geen bon"}
-                        </Badge>
-                      </div>
-
-                      <div className="mt-4 grid gap-3 md:grid-cols-2">
-                        <div className="rounded-2xl bg-slate-50 px-3 py-2 text-sm">
-                          <span className="font-medium text-slate-500">Bedrag:</span>{" "}
-                          <span className="text-slate-900">{euro(item.amount)}</span>
-                        </div>
-                        <div className="rounded-2xl bg-slate-50 px-3 py-2 text-sm">
-                          <span className="font-medium text-slate-500">Bestand:</span>{" "}
-                          <span className="break-all text-slate-900">{item.attachmentName || "-"}</span>
-                        </div>
-                      </div>
-
-                      {detailText(item) ? (
-                        <div className="mt-3 rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                          <span className="font-medium text-slate-500">Opmerking:</span>{" "}
-                          {detailText(item)}
-                        </div>
-                      ) : null}
-
-                      {item.attachmentPublicUrl ? (
-                        <div className="mt-4 space-y-3">
-                          <div className="flex flex-wrap gap-2">
-                            <Button type="button" variant="outline" className="rounded-2xl" asChild>
-                              <a href={item.attachmentPublicUrl} target="_blank" rel="noreferrer">
-                                Bekijk bon
-                              </a>
-                            </Button>
-                          </div>
-
-                          {String(item.attachmentName || "").match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
-                            <div className="overflow-hidden rounded-3xl border bg-slate-50">
-                              <img
-                                src={item.attachmentPublicUrl}
-                                alt={item.attachmentName || "Bon"}
-                                className="max-h-[420px] w-full object-contain"
-                              />
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : item.attachmentName ? (
-                        <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                          Deze declaratie heeft wel een bestandsnaam in de historie, maar geen bruikbare bon-link. Dat gebeurt meestal bij oudere declaraties waarvan het bonbestand eerder is verwijderd.
-                        </div>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
 
         <Dialog
           open={previewState.open}
@@ -2413,108 +2116,3 @@ function AuthScreen({
     </div>
   );
 }
-
-
-function Field({ label, children }) {
-  return (
-    <div className="space-y-2.5">
-      <Label className="text-sm font-medium text-slate-700">{label}</Label>
-      {children}
-    </div>
-  );
-}
-
-// ================= ADMIN COMPONENTS =================
-
-function AdminUsersTab({ supabase }) {
-  const [users,setUsers]=React.useState([]);
-
-  async function loadUsers(){
-    const {data}=await supabase.from("profiles").select("*");
-    setUsers(data||[]);
-  }
-
-  async function disableUser(id){
-    await supabase.from("profiles").update({disabled:true}).eq("id",id);
-    loadUsers();
-  }
-
-  async function enableUser(id){
-    await supabase.from("profiles").update({disabled:false}).eq("id",id);
-    loadUsers();
-  }
-
-  React.useEffect(()=>{loadUsers()},[]);
-
-  return (
-    <Card className="mt-4">
-      <CardHeader><CardTitle>Admin · Users</CardTitle></CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Email</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Action</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {users.map(u=>(
-              <TableRow key={u.id}>
-                <TableCell>{u.email}</TableCell>
-                <TableCell>{u.disabled ? "Disabled":"Active"}</TableCell>
-                <TableCell>
-                  {u.disabled ? (
-                    <Button onClick={()=>enableUser(u.id)}>Enable</Button>
-                  ) : (
-                    <Button variant="destructive" onClick={()=>disableUser(u.id)}>Disable</Button>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
-  )
-}
-
-function SignupAttemptsTab({ supabase }){
-  const [items,setItems]=React.useState([]);
-
-  async function load(){
-    const {data}=await supabase.from("signup_attempts").select("*").order("created_at",{ascending:false});
-    setItems(data||[]);
-  }
-
-  React.useEffect(()=>{load()},[]);
-
-  return (
-    <Card className="mt-4">
-      <CardHeader><CardTitle>Signup Attempts</CardTitle></CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Email</TableHead>
-              <TableHead>Secret OK</TableHead>
-              <TableHead>Attempts</TableHead>
-              <TableHead>Blocked</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {items.map(i=>(
-              <TableRow key={i.id}>
-                <TableCell>{i.email}</TableCell>
-                <TableCell>{String(i.secret_ok)}</TableCell>
-                <TableCell>{i.attempt_count}</TableCell>
-                <TableCell>{i.blocked_until}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
-  )
-}
-

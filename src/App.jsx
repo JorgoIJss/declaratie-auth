@@ -390,7 +390,75 @@ function mapDeclarationToDb(draft, userId) {
   };
 }
 
+
+function SignupAttemptsAdminTab({ user }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [roles, setRoles] = useState({ checked:false, admin:false, approver:false });
+
+  useEffect(()=>{
+    async function loadRole(){
+      if(!user?.id) return;
+      const {data} = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+      const r=(data||[]).map(x=>x.role);
+      setRoles({checked:true, admin:r.includes("admin"), approver:r.includes("approver")});
+    }
+    loadRole();
+  },[user?.id]);
+
+  async function loadAttempts(){
+    setLoading(true);
+    const {data}=await supabase.rpc("get_recent_signup_attempts",{limit_count:100});
+    setItems(data||[]);
+    setLoading(false);
+  }
+
+  useEffect(()=>{
+    if(roles.admin||roles.approver) loadAttempts();
+  },[roles]);
+
+  if(!roles.checked || (!roles.admin && !roles.approver)) return null;
+
+  return (
+    <Card className="rounded-[28px] border-white/70 bg-white/80 shadow-sm backdrop-blur">
+      <CardHeader>
+        <CardTitle>Signup attempts</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <Button onClick={loadAttempts} disabled={loading}>Vernieuwen</Button>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Email</TableHead>
+              <TableHead>Naam</TableHead>
+              <TableHead>Pogingen</TableHead>
+              <TableHead>Geheim</TableHead>
+              <TableHead>Geblokkeerd tot</TableHead>
+              <TableHead>Laatste poging</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.map(i=>(
+              <TableRow key={i.id}>
+                <TableCell>{i.email}</TableCell>
+                <TableCell>{i.display_name}</TableCell>
+                <TableCell>{i.attempt_count}</TableCell>
+                <TableCell>{i.secret_ok ? "OK":"FOUT"}</TableCell>
+                <TableCell>{i.blocked_until? new Date(i.blocked_until).toLocaleString("nl-NL"):"-"}</TableCell>
+                <TableCell>{new Date(i.updated_at).toLocaleString("nl-NL")}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
+
 export default function DeclaratiesWebApp() {
+  const [authMessage, setAuthMessage] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
   const [tab, setTab] = useState("declaraties");
   const [batch, setBatch] = useState([]);
   const [history, setHistory] = useState([]);
@@ -1078,7 +1146,8 @@ export default function DeclaratiesWebApp() {
               <Settings className="mr-1.5 h-4 w-4" />
               Settings
             </TabsTrigger>
-          </TabsList>
+            <TabsTrigger value="signup-attempts">Signup attempts</TabsTrigger>
+</TabsList>
 
           <TabsContent value="declaraties" className="space-y-4 md:space-y-6">
             <div className="grid gap-4 md:gap-6 lg:grid-cols-[1.2fr_0.8fr]">
@@ -1396,7 +1465,8 @@ export default function DeclaratiesWebApp() {
               </CardContent>
             </Card>
           </TabsContent>
-        </Tabs>
+          <TabsContent value="signup-attempts"><SignupAttemptsAdminTab user={user} /></TabsContent>
+</Tabs>
 
         <Dialog
           open={previewState.open}
